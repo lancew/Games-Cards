@@ -53,21 +53,21 @@ $War = new Games::Cards::Game {"cards_in_suit" => $valueref};
 
 # Create and shuffle the deck
 print "Creating new deck.\n";
-$Deck = $War->create_deck("Deck");
+$Deck = new Games::Cards::Deck ($War, "Deck");
 print "Shuffling the deck.\n";
 $Deck->shuffle;
 
 # Deal out the hands
 foreach my $i (1 .. $Number_Of_Players) {
     print "Dealing hand $i\n";
-    my $hand = new Games::Cards::Queue "Player $i";
+    my $hand = new Games::Cards::Queue ($War, "Player $i");
     $Deck->give_cards($hand, $Cards_Per_Hand);
     push @Hands, $hand;
 }
 
 # Create CardSets for the cards each player puts on the table
 foreach my $i (1 .. $Number_Of_Players) {
-    my $table_hand = new Games::Cards::Stack "Player $i showing"; 
+    my $table_hand = new Games::Cards::Stack ($War, "Player $i showing"); 
     push @Table, $table_hand;
 }
 
@@ -77,9 +77,16 @@ my @other = (1,0); # the other player
 my $turns = 0;
 
 while (++$turns < $Max_Turns) {
-    print "Turn $turns:  ",
-        map ({" " . $_->name ." has " . $_->size . " cards."} @Hands), "\n";
-    if ($Long) {foreach (@Hands) { print $_->print("short"); }}
+#    print "Turn $turns:  ",
+#        map ({" " . $_->name ." has " . $_->size . " cards."} @Hands), "\n";
+    
+    if ($Long) {
+        foreach (@Hands) { print $_->print("short"); }
+    } else {
+	my $i = 1;
+        foreach (@Hands) { print $i++ x $_->size, "   " }
+	print "\n";
+    }
     my $compare = 0;
     while (!$compare) {
 	# Each player puts a card on the table
@@ -103,7 +110,7 @@ while (++$turns < $Max_Turns) {
     # Winner gets the card (or cards if there was a war)
     my $winner = ($compare > 0 ? 1 : 0);
     my $loser = $other[$winner];
-    print $Hands[$winner]->{"name"}, " wins.\n";
+    print $Hands[$winner]->{"name"}, " wins.\n" if $Long;
     $Table[$winner]->give_cards($Hands[$winner], "all");
     $Table[$loser]->give_cards($Hands[$winner], "all");
 

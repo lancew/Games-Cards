@@ -19,7 +19,7 @@ print "ok 1\n";
 # of the test code):
 
 # Try to run war
-@output = `perl -Iblib/lib war.pl`;
+@output = `perl -Iblib/lib script/war.pl`;
 $lastline = $output[-1];
 if ($lastline =~ /give up|wins after/) {
     print "ok 2\n";

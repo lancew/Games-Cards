@@ -6,16 +6,22 @@ a bunch of object-oriented methods to create sets of cards and move cards
 within and between those sets---which, if you think about it, is all that a
 card game is.
 
-See the embedded pod documentation (e.g., "perldoc Games::Cards"). The docs
-describe only the public subroutines and classes (plus a couple private classes
-whose subroutines are inherited by public derived classes). There is some more
-documentation (on private stuff) as regular comments in the module.
+Games::Cards::Tk allows you to write games with a GUI, using card images
+created by Oliver Xymoron (see http://www.waste.org/~oxymoron/cards) and
+released under the GPL/Artistic License (Thanks, Oliver!).
 
-And that's not all! The module comes with some (free!) games that have been
-written using Games::Cards. These include:
+See the embedded pod documentation for more info, including known bugs.
+See Changes for recent changes in the module.
+See TODO for future plans.
 
-klondike.pl - Otherwise known as regular old Solitaire. Currently the most
-        useful of these games.
+Games
+-----
+
+The module comes with some (free!) games in the script/ directory:
+
+klondike.tk - Otherwise known as regular old Solitaire. 
+
+freecell.tk - The popular Freecell variant of solitaire.
 
 war.pl - This game plays both sides in a game of War, saving time and effort
 	for weary users. And in case you saw the movie Wargames, don't worry:
@@ -24,23 +30,14 @@ war.pl - This game plays both sides in a game of War, saving time and effort
 
 gin.pl - Plays gin. Unfortunately, Games::Cards doesn't yet work over a network
         so both players play on the same screen, which kind of ruins the
-	game. However, support for Server/Client games is under active
-	development.
+	game. Support for Server/Client games is under development
+	(your help would be appreciated!)
 
-(Not one but two implementations of Freecell have been written, one with GUI!
-I plan to include them in future releases.)
-
---------------------------------------------------
-Version info:
-
+---------------------------------------------------------------
 WARNING! THIS CODE IS STILL ALPHA
 The whole package may change radically before it becomes beta.
-
-I'm developing the module with RCS, and the version number is derived
-from that. Right now I'm using v1.*, and the version numbers are changing
-quickly. When things settle down, I'll move to v2.* and use subversions
-so that the version numbers change more slowly.
---------------------------------------------------
+Games::Cards::Tk is even more alpha than the rest.
+---------------------------------------------------------------
 
 Installation
 ------------
@@ -49,5 +46,15 @@ This module uses MakeMaker, so to install it, just do:
 
     perl Makefile.PL
     make
+    make test
     make install
 
+
+--------------------------------------------------
+Note:
+
+I suspect that many Games::Cards games will be solitaire, especially before
+networked game playing works. For general solitaire info, try
+http://www.solitairecentral.com or.  For rules to several gazillion (320)
+solitaire games, try http://www.goodsol.com/pgshelp/how_to_play.htm, which are
+the help pages for the shareware "Pretty Good Solitaire" distribution.

@@ -1,57 +1,20 @@
-#!/usr/bin/perl -w
-#
-# Games::Cards - Package for card games
-#
-# Copyright 1999 Amir Karger (karger@post.harvard.edu)
-#
-# This program is free software; you can redistribute it and/or modify it
-# under the same terms as Perl itself.
-
-# TODO get rid of size, have cards return wantarray ? array of cards : size
-#
-# TODO write Undo::Sort?
-
 package Games::Cards;
-
-use strict;
-use vars qw($VERSION);
-require 5.004; # I use 'foreach my'
-
-# Stolen from `man perlmod`
-$VERSION = do { my @r = (q$Revision: 1.36 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
-
-# sub-packages
-{ 
-package Games::Cards::Game;
-
-package Games::Cards::Queue;
-package Games::Cards::Stack;
-package Games::Cards::Pile;
-package Games::Cards::Hand;
-package Games::Cards::CardSet;
-
-package Games::Cards::Card;
-
-package Games::Cards::Undo;
-package Games::Cards::Undo::Atom;
-package Games::Cards::Undo::Splice;
-package Games::Cards::Undo::Face;
-package Games::Cards::Undo::End_Move;
-}
 
 =pod
 
 =head1 NAME
 
-Games::Cards -- Perl module for playing card games
+Games::Cards -- Perl module for writing and playing card games
 
 =head1 SYNOPSIS
 
     use Games::Cards;
     my $Rummy = new Games::Cards::Game;
 
-    # Create and shuffle the deck and create the discard pile
-    my $Deck = $Rummy->create_deck("Deck"); # creates correct deck for this game
+    # Create the correct deck for a game of Rummy.
+    my $Deck = new Games::Cards::Deck ($Rummy, "Deck");
+
+    # shuffle the deck and create the discard pile
     $Deck->shuffle;
     my $Discard = new Games::Cards::Queue "Discard Pile";
 
@@ -67,16 +30,82 @@ Games::Cards -- Perl module for playing card games
     foreach (@Hands) { print ($_->print("short"), "\n") }
     
     $Hands[1]->give_a_card ($Discard, "8D"); # discard 8 of diamonds
-    
-    # Undo stuff (e.g. for solitaire, not rummy)
-    $Undo = new Games::Cards::Undo(100); # Make undo engine to save 100 moves
-    $Undo->undo; # undo last move
-    $Undo->redo; # redo last undone move
-    $Undo->end_move; # tell undo engine we're done with a move
 
 =head1 DESCRIPTION
 
-This module creates objects to allow easier programming of card games.
+This module creates objects and methods to allow easier programming of card
+games in Perl. It allows you to do things like create decks of cards,
+have piles of cards, hands, and other sets of cards, turn cards face-up
+or face-down, and move cards from one set to another. Which is pretty much
+all you need for most card games.
+
+Sub-packages include:
+
+=over 4
+
+=item Games::Cards::Undo
+
+This package handles undoing and redoing moves (important for solitaire).
+
+=item and Games::Cards::Tk
+
+This package allows you to write games that use a Tk graphical interface.
+It's designed so that it will be relatively easy to write a game that uses
+i<either> a GUI or a simple text interface, depending on the player's
+circumstances (availability of Tk, suspicious boss, etc.). See
+L<Games::Cards::Tk> for more details on writing Tk games.
+
+=back
+
+=head2 Quick Overview of Classes
+
+A GC::Game stores information like what cards are in the starting deck,
+plus pointers to the various Cards and CardSets.
+
+A GC::Card represents one playing card. Every Card must belong to one
+(and only one) CardSet at every point during the game.
+
+A GC::CardSet is mostly just a set of GC::Cards. A CardSet has a unique
+name. Many also have short nicknames, which make it easier to write games
+that move cards between the sets. (See Klondike or FreeCell, for example.)
+
+There are many sorts of CardSet. The basic differentiation is Piles,
+for which you only access the top or bottom card (or cards) and Hands,
+where you might access any one of the cards in the Hand. Piles are
+broken up into Stacks and Queues, and every game starts with a Deck of
+cards (or more than one).
+
+=cut
+
+# TODO get rid of size, have cards return wantarray ? array of cards : size
+#
+# TODO Games::Cards::Undo::Exists. If not defined, don't bother calling
+# GC::Undo::store etc. on every turn. Then each game can "use GCU" or not.
+
+use strict;
+use vars qw($VERSION);
+require 5.004; # I use 'foreach my'
+
+# Stolen from `man perlmod`
+$VERSION = do { my @r = (q$Revision: 1.45 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
+
+# Handle undoing/redoing moves
+use Games::Cards::Undo;
+
+# sub-packages
+{ 
+package Games::Cards::Game;
+
+package Games::Cards::Deck;
+package Games::Cards::Queue;
+package Games::Cards::Stack;
+package Games::Cards::Pile;
+package Games::Cards::Hand;
+package Games::Cards::CardSet;
+
+package Games::Cards::Card;
+}
+
 
 =head2 Class Games::Cards::Game
 
@@ -96,6 +125,11 @@ package Games::Cards::Game;
 #     cards in each suit, and values are the (default) values of those cards
 # (Card names will be strings, although they might be "2". Values are
 # integers, so that we can compare cards with other cards.)
+#
+# cardset_by_nickname is a hash whose keys are short (unique) nicknames and
+# values are the CardSets (e.g., player's Hands, Piles, etc.) so nicknamed
+# cardset_by_name is the same with the CardSet names
+# card_by_truename stores Cards via their truenames. (See Card::truename)
 
 my $Default_Suits = [qw(Clubs Diamonds Hearts Spades)];
 # (Parts of) this hash will need to be reset in lots of games.
@@ -114,6 +148,24 @@ my $Default_Cards_In_Suit = {
     "Queen" => 12,
     "King" => 13,
 };
+
+=item current_game
+
+Returns the current Game object. In almost every case, you'll only be
+working with one at a time.
+
+=item set_current_game(GAME)
+
+In theory, these subs let you handle multiple Games at once, as long
+as you set_current_game to the right one. Note that Game->new automatically
+sets the current Game to be that game, so in 99% of cases, you won't have to
+call set_current_game.
+
+=cut
+
+my $_Current_Game;
+sub current_game { return $_Current_Game; }
+sub set_current_game {$_Current_Game = shift;}
 
 =item new(HASHREF)
 
@@ -135,47 +187,134 @@ For example, war would require "Ace"=>14.
 	    "suits" => $hashref->{"suits"} || $Default_Suits,
 	    "cards_in_suit" => $hashref->{"cards_in_suit"} ||
 	                       $Default_Cards_In_Suit,
+	    "cardset_by_name" => {},
+	    "cardset_by_nickname" => {},
 	};
 
 	bless $cardgame, $class;
+	# For now, this game will be the current game
+	$cardgame->set_current_game;
+
+	return $cardgame;
     } # end sub Games::Cards::Game::new
 
-=item create_deck(NAME)
+    # Store a CardSet. Use separate hashes for cardset's name and nickname,
+    # for convenience.
+    sub store_cardset {
+        my ($self, $cardset) = @_;
+	$self->{"cardset_by_name"}->{$cardset->name} = $cardset;
+	if (defined (my $nick = $cardset->nickname)) {
+	    $self->{"cardset_by_nickname"}->{$nick} = $cardset;
+	}
+    }
 
-creates an I<unshuffled> deck of cards. For each card in the deck it creates
-a name, suit, value, and suit value. NAME is the name to give the deck, e.g.
-"Deck" (it is passed to the "new" call that creates the deck.) The number of
-cards in the deck, etc.  is stipulated by the argument, which is a
-Games::Cards::Game object.  Returns the deck, which is a Games::Cards::Queue
-object.
+=item get_cardset_by_name(NAME)
+
+Returns the CardSet with name NAME
 
 =cut
 
-    sub create_deck {
-	my $game = shift;
-	my $deckname = shift;
-	my $deck = new Games::Cards::Queue $deckname;
-	my %cards = %{$game->{"cards_in_suit"}};
-
-	# make an unshuffled deck
-	foreach my $suit_value (1..@{$game->{"suits"}}) {
-	    my $suit = $game->{"suits"}->[$suit_value-1];
-	    foreach my $name (keys %cards) {
-		my $new_card = new Games::Cards::Card {
-		    "suit"=>$suit, "name"=> $name,
-		    "suit_value" => $suit_value, "value" => $cards{$name}
-		    };
-		push @{$deck->{"cards"}}, $new_card;
-	    }
+    sub get_cardset_by_name {
+        my ($self, $name) = @_;
+	if (exists ($self->{"cardset_by_name"}->{$name})) {
+	    return $self->{"cardset_by_name"}->{$name};
+	} else {
+	    return undef;
 	}
+    }
 
-	return $deck;
-    } # end sub Games::Cards::Game::create_deck
+=item get_cardset_by_nickname(NAME)
+
+Returns the CardSet with nickname NAME
+
+=cut
+
+    sub get_cardset_by_nickname {
+        my ($self, $nickname) = @_;
+	if (exists ($self->{"cardset_by_nickname"}->{$nickname})) {
+	    return $self->{"cardset_by_nickname"}->{$nickname};
+	} else {
+	    return undef;
+	}
+    }
+
+    # Store a Card
+    sub store_card {
+        my ($self, $card) = @_;
+	my $truename = $card->truename;
+	$self->{"card_by_truename"}->{$truename} = $card;
+    }
+
+=item get_card_by_truename(NAME)
+
+Returns the Card with truename NAME
+
+=cut
+
+    sub get_card_by_truename {
+        my ($self, $truename) = @_;
+	if (exists ($self->{"card_by_truename"}->{$truename})) {
+	    return $self->{"card_by_truename"}->{$truename};
+	} else {
+	    return undef;
+	}
+    }
 
 } # end package Games::Cards::Game
 
 ######################################################################
 # CardSet and its subclasses
+
+=head2 Games::Cards::Deck
+
+A deck is a deck of cards. The number of cards and identities of the cards in
+the deck depend on the particular Game for which the deck is used.
+
+=over 4
+
+=cut
+
+{
+package Games::Cards::Deck;
+@Games::Cards::Deck::ISA = qw (Games::Cards::Queue);
+
+=item new (GAME, NAME)
+
+creates an I<unshuffled> deck of cards. For each card in the deck it creates
+a name, suit, value, and suit value. GAME is the GC::Game this deck
+belongs to, and it stipulates the number of cards in the deck, etc. NAME is the
+name to give the deck, e.g.  "Deck". 
+
+=back
+
+=cut
+
+    sub new {
+	my ($class, $game, $deckname) = @_;
+	if (ref($class)) {$class = ref($class)}
+	# This allows us to get Tk or non-Tk automatically
+	(my $qclass = $class) =~ s/::Deck/::Queue/;
+	my $deck = $qclass->new($game, $deckname);
+	my %cards = %{$game->{"cards_in_suit"}};
+
+	# make an unshuffled deck
+	(my $cclass = $class) =~ s/::Deck/::Card/;
+	foreach my $suit_value (1..@{$game->{"suits"}}) {
+	    my $suit = $game->{"suits"}->[$suit_value-1];
+	    foreach my $name (keys %cards) {
+		my $arg = {
+		    "suit"=>$suit, "name"=> $name,
+		    "suit_value" => $suit_value, "value" => $cards{$name}
+		};
+		my $new_card = $cclass->new($game, $arg);
+		push @{$deck->{"cards"}}, $new_card;
+		$new_card->set_owning_cardset($deck);
+	    }
+	}
+
+	bless $deck, $class;
+    } # end sub Games::Cards::Deck::new
+} # end package Games::Cards::Deck
 
 =head2 Class Games::Cards::Queue
 
@@ -365,7 +504,7 @@ package Games::Cards::Hand;
 
 =item give_a_card(RECEIVER, DESCRIPTION)
 
-Transfers Card described by DESCRIPTION from the donor (the object on which
+Transfers Card described by DESCRIPTION from the donor (the Hand on which
 this method was called) to the CardSet RECEIVER.  This method can used for
 discarding a card from a hand, e.g. 
 
@@ -477,12 +616,10 @@ a string (like "8H" or "KC").
 	if (ref $description eq "Games::Cards::Card") {
 	    $find = sub {shift == $description};
 
-	# Note: This is a bad way to match card names!
-	# TODO methods to break a card description apart
 	# but it matches 2-10 or AKQJ of CHDS
+	# TODO need to change this for multiple decks!
 	} elsif ($description =~ /^[\dakqj]+[chds]/i) {
-	    $find = sub {(my $pr = shift->print("short")) =~ s/\s*//g;
-	                 $pr eq uc($description)};
+	    $find = sub {shift->truename eq uc($description)};
 	} else {
 	    my $caller = (caller(0))[3];
 	    die "$caller called with unknown description $description\n";
@@ -524,10 +661,12 @@ package Games::Cards::CardSet;
 # name - "Joe's Hand" for Joe's hand, "discard" for a
 # discard pile, etc.
 
-=item new(NAME)
+=item new(GAME, NAME, NICKNAME)
 
-create a new (empty) CardSet. NAME is a string that e.g. can be output when
-you print the CardSet.
+create a new (empty) CardSet. GAME is the Game object that this set belongs
+to. NAME is a unique string that e.g. can be output when you print the CardSet.
+Optionally, NICKNAME is a (unique!) short name that will be used to reference
+the set.
 
 =cut
 
@@ -535,14 +674,23 @@ you print the CardSet.
         my $self = shift;
 	# so we can say $foo->new or new Bar
         my $class = ref($self) || $self;
-	my $name = shift;
+	my $game = shift;
+	# TODO use carp!
+	my $name = shift || die "new $class must be called with a 'name' arg";
+	my $nickname = shift; # may be undef
 	my $set = {
 	    "cards" => [],
 	    "name" => $name,
+	    "nickname" => $nickname,
 	};
-
 	bless $set, $class;
-    } # end sub CardSet::new
+
+	# If this set is named "a" in this Game, then store
+	# "a"=>$set in the Game object. Same for nickname
+	$game->store_cardset($set);
+
+	return $set;
+    } # end sub Games::Cards::CardSet::new
 
     # Splice cards into/out of a set
     # Just like Perl's splice (with different argument types!)
@@ -589,9 +737,13 @@ you print the CardSet.
 			};
 	$atom->store; # store the atom in the Undo List
 
+	# in_cards now belong to this set
+	# out_cards will be handled by another splice, presumably
+	foreach (@$in_cards) { $_->set_owning_cardset($set) }
+
 	# print $set->size,"\n";
 	return $out_cards;
-    } # end sub Cards::Games::splice
+    } # end sub Games::Cards::CardSet::splice
 
 =item shuffle
 
@@ -603,7 +755,7 @@ shuffles the cards in the CardSet. Shuffling is not undoable.
     # shuffle the deck (or subset thereof)
         my $deck = shift;
 
-	# Schwarztian transform
+	# "Random Schwartz"
 	# Replace the cards in the deck with shuffled cards
 	# (Just pick N random numbers & sort them)
 	@{$deck->{"cards"}} =
@@ -649,19 +801,22 @@ Sorts the Set by suit, then by value within the suit.
 				@{$set->{"cards"}}
     } # end sub Games::Cards::CardSet::sort_by_suit_and_value
 
-=item clone
+=item clone(GAME, NAME, NICKNAME)
 
 Create a copy of this CardSet. That is, create an object with the same class
 as arg0. Then make a copy of each Card in the CardSet (true copy, not a
-reference). arg1 is the name to give the new CardSet.
+reference). arg1 is the Game that the set belongs to. arg2 is the name to give
+the new CardSet. arg3 (optional) is the nickname.
 
 =cut
 
     sub clone {
-	my ($this, $name) = shift;
-	my $clone = $this->new($name);
+	my $this = shift;
+	my $clone = $this->new(@_);
+	my $game = shift; # shift *after* using @_!
 
-	$clone->{"cards"} = [map {$_->clone} @{$this->cards}];
+	$clone->{"cards"} = [map {$_->clone($game)} @{$this->cards}];
+	foreach (@{$clone->cards}) {$_->set_owning_cardset($clone)};
 
 	return $clone;
     } # end sub Games::Cards::CardSet::clone
@@ -738,6 +893,14 @@ Returns the name of the Set
 
     sub name {return shift->{"name"}}
 
+=item nickname
+
+Returns the nickname of the Set (or undef if there is none)
+
+=cut
+
+    sub nickname {return shift->{"nickname"}}
+
 =item cards
 
 Returns a reference to the array of Cards in the set
@@ -778,16 +941,22 @@ package Games::Cards::Card;
 # suit is the suit
 # suit_value is the value of the suit: e.g. in bridge spades is 4, clubs 1
 #  (although that may change after bidding!)
-# hidden tells whether the player can see the card
+# face_up tells whether the player can see the card
+# owner is the name of the CardSet that this Card belongs to. A Card can
+#    only belong to one CardSet! (We store the name because storing a pointer
+#    might screw up garbage collection.)
 
-=item new(HASHREF)
+=item new(GAME, HASHREF)
 
-creates a new card. HASHREF references a hash with keys "suit" and "name".
+creates a new card. GAME is the Game this card is being created in. HASHREF
+references a hash with keys "suit" and "name".
 
 =cut
 
     sub new {
-        my $class = shift;
+        my $a = shift;
+	my $class = ref($a) || $a;
+	my $game = shift;
 	my $hashref = shift;
 	my $card = {
 	    "name" => $hashref->{"name"},
@@ -795,13 +964,19 @@ creates a new card. HASHREF references a hash with keys "suit" and "name".
 	    "value" => $hashref->{"value"},
 	    "suit_value" => $hashref->{"suit_value"},
 	    "face_up" => 1, # by default, you can see a card
+	    "owner" => undef,
 	};
 
 	# turn it into a playing card
 	bless $card, $class;
+
+	# store a pointer to the card in the Game object
+	$game->store_card($card);
+
+	return $card;
     } # end sub Games::Cards::Card::new
 
-=item clone
+=item clone(GAME)
 
 makes a copy of the Card (not just a reference to it).
 
@@ -809,16 +984,19 @@ makes a copy of the Card (not just a reference to it).
 
     sub clone {
         my $old_card = shift;
+	my $game = shift;
+	my $class = ref($old_card);
 	my $suit = $old_card->suit("long");
 	my $name = $old_card->name("long");
 	my $value = $old_card->value;
 	my $suit_value = $old_card->suit_value;
-	my $new_card = new Games::Cards::Card {
+	my $new_card = $old_card->new ($game, {
 	    "suit"=>$suit, "name"=> $name,
 	    "suit_value" => $suit_value, "value" => $value
-	};
+	    });
 
 	$old_card->is_face_up ? $new_card->face_up : $new_card->face_down;
+	# Don't set owner, because it may be different
 	
 	return $new_card;
     } # end sub Games::Cards::Card::clone
@@ -850,10 +1028,22 @@ returns a string with the whole card name ("King of Hearts") if LENGTH is
 
     } # end sub Card::print
 
+=item truename
+
+Gives a unique description of this card, i.e., you're guaranteed that no
+other card in the Game will have the same description.
+
+=cut
+
+    sub truename {
+	my $self = shift;
+	return join("", $self->name, $self->suit); 
+    } # end sub Games::Cards::Card::truename
+    
 =item name(LENGTH)
 
-prints the name of the card. The full name if LENGTH is "long"; otherwise
-a short version ("K");
+prints the name of the card. The full name ("King") if LENGTH is "long";
+otherwise a short version ("K");
 
 =cut
 
@@ -867,7 +1057,7 @@ a short version ("K");
 	} else {
 	   return $long ? $name : uc(substr($name, 0, 1));
 	}
-    } # end Games::Cards::Card::name
+    } # end sub Games::Cards::Card::name
 
 =item suit(LENGTH)
 
@@ -974,307 +1164,39 @@ Makes a card face down
 	}
     } # end sub Games::Cards::Card::face_down
 
+=item owning_cardset
+
+Returns the CardSet which this Card is a part of
+
+=item set_owning_cardset(SET_OR_NAME)
+
+Makes the Card a part of a CardSet. Arg0 is either an actual CardSet ref, or
+the name of a CardSet.
+
+=cut
+
+    sub owning_cardset {
+	my $self = shift;
+	my $set_name = $self->{"owner"};
+	my $game = &Games::Cards::Game::current_game;
+	my $set = $game->get_cardset_by_name($set_name);
+	# TODO use carp!
+	warn $self->print("long"), " doesn't belong to any CardSets!\n"
+	    unless defined $set;
+	return $set;
+    }
+    sub set_owning_cardset { 
+        my ($self, $cardset) = @_;
+	$self->{"owner"} = 
+	    $cardset->isa("Games::Cards::CardSet") ?  $cardset->name : $cardset;
+    } # end sub Games::Cards::Card::set_owning_cardset
+
 =back
 
 =cut
 
 } # end package Card
 
-######################################################################
-
-=head2 Class Games::Cards::Undo
-
-This is the package for methods to undo & redo moves. There is no CG::Undo
-object. But there is a (private) array of the preceding moves (private
-CG::Undo::Move objects). Note that a "move" is made up of several "atoms".
-For example, moving a card from one column to another in solitaire involves
-one or more Splice atoms (removing or adding card(s) to a CardSet) and 
-possibly a Face atom (turning a card over).
-
-Generally, these methods will be called by other
-Games::Cards methods, but not by the actual games. Methods:
-
-=over 4
-
-=cut
-
-{
-package Games::Cards::Undo;
-# How does Games::Cards handle undo?
-#
-# Undo_List is just an array of (objects from derived classes of) Undo::Atoms.
-# E.g. in solitaire one "move" might include moving cards from one column to
-# another (two Undo::Splice objects) and turning a card over (a Undo::Face
-# object) The undo list will store those Atoms as well as an End_Move object,
-# which is just a placeholder saying that move is over.
-
-# Global private variables
-# Can't keep this info in an object, because private GC subroutines
-# (like CardSet::splice) need access to the Undo list, and I shouldn't have
-# to pass the undo object around to every sub.
-# GC::Undo::Undo_List holds all previous moves in GC::Undo::Atom objects
-# GC::Undo::Current_Atom is the index of the current Atom in @Undo_List
-# GC::Undo::Max_Size is the maximum size (moves, not Atoms!) of the undo list
-# GC::Undo::In_Undo says that we're currently doing (or undoing) an Undo, so we
-# shouldn't store undo information when we move cards around
-my (@Undo_List, $Current_Atom, $Max_Size, $In_Undo);
-
-=item new(MOVES)
-
-Initialize the Undo engine. MOVES is the number of atoms to save.
-0 (or no argument) allows infinite undo.
-
-This method must be called before any undo-able moves are made (i.e., it can be
-called after the hands are dealt).  This method will also re-initialize the
-engine for a new game.
-
-=cut
-
-    sub new {
-	my $class = shift;
-	# (re)set global private variables
-	$Max_Size = shift || 0;
-        $Current_Atom = -1;
-	@Undo_List = ();
-	$In_Undo = 0;
-
-	# Make the (dummy) object to give a "handle" for methods
-	my $thing = {};
-	bless $thing, $class;
-	return $thing;
-    }
-
-=item end_move
-
-End the current move. Everything between the last call to end_move and now
-is considered one move. This tells undo how much to undo.
-
-=cut
-
-    sub end_move {
-	# calling with just "store(foo)" there aren't enough args!
-	my $atom = new Games::Cards::Undo::End_Move;
-	$atom->store;
-    } # end sub Games::Cards::Undo::end_move
-
-    sub store {
-    # Stores a move in the undo list, which can later be undone or redone. The
-    # first argument is the type of move to store, other args give details about
-    # the move depending on the move type.
-    #
-    # arg1 is a subclass of Undo::Atom
-	# Don't store moves if the undo engine hasn't been initialized
-	return unless defined $Current_Atom;
-
-	# don't store undo moves when we're currently implementing an undo/redo
-	return if $In_Undo; 
-
-        shift; # ignore class
-	my $atom = shift; # the Undo::Atom to store
-
-	# If we undid some moves & then do a new move instead of redoing,
-	# then erase the moves we undid
-	$#Undo_List = $Current_Atom;
-
-	# Now add the move to the undo list
-	push @Undo_List, $atom;
-
-	# If the list is too big, remove a whole move (not just an Atom)
-	# from the beginning of the list (oldest undos)
-	my $end_class = "Games::Cards::Undo::End_Move";
-	if ($Max_Size && grep {ref eq $end_class} @Undo_List > $Max_Size) {
-	    $atom = shift @Undo_List until ref($atom) eq $end_class;
-	}
-
-	$Current_Atom = $#Undo_List;
-
-        return 1;
-    } # end sub Games::Cards::Undo::store
-
-=item undo
-
-Undo a move.
-
-=cut
-
-    sub undo {
-    # undoing a move means undoing all the Atoms since the last
-    # End_Move Atom
-    # Note that this sub can (?) also undo from the middle of a move
-	# If called w/ class instead of object, and we never called new(),
-	# then return. This shouldn't happen.
-	return unless defined $Current_Atom; # never called new
-	return if $Current_Atom == -1;
-	$In_Undo = 1; # Don't store info when moving cards around
-
-	# Loop until the next End_Move Atom or until we exhaust the undo list
-	my $end_class= "Games::Cards::Undo::End_Move";
-	$Current_Atom-- if ref($Undo_List[$Current_Atom]) eq $end_class;
-	for (;$Current_Atom > -1; $Current_Atom--) {
-	   my $atom = $Undo_List[$Current_Atom];
-	   last if ref($atom) eq $end_class;
-	   $atom->undo;
-	}
-	# now $Current_Atom is on the End_Move at the end of the last move
-
-	$In_Undo = 0; # done undoing. Allowed to store again.
-	return 1;
-    } # end sub Games::Cards::Undo::undo
-
-
-=item redo
-
-Redo a move that had been undone with undo.
-
-=cut
-
-    sub redo {
-    # redoing a move means redoing every Atom from the current atom
-    # (which should be an End_Move) until the next End_Move atom
-	# If called w/ class instead of object, and we never called new(),
-	# then return. This shouldn't happen.
-	return unless defined $Current_Atom; 
-	return if $Current_Atom == $#Undo_List;
-	$In_Undo = 1; # Don't store info when moving cards around
-
-	# Loop until the next End_Move Atom or until we exhaust the undo list
-	my $atom;
-	my $end_class = "Games::Cards::Undo::End_Move";
-	$Current_Atom++ if ref($Undo_List[$Current_Atom]) eq $end_class;
-	for (;$Current_Atom <= $#Undo_List; $Current_Atom++) {
-	   my $atom = $Undo_List[$Current_Atom];
-	   last if ref($atom) eq $end_class;
-	   $atom->redo;
-	}
-	# now $Current_Atom is on the End_Move at the end of this move
-
-	$In_Undo = 0; # done redoing. Allowed to store again.
-	return 1;
-    } # end sub Games::Cards::Undo::redo
-
-=back
-
-=cut
-
-{
-package Games::Cards::Undo::Atom;
-# A CG::Undo::Atom object stores the smallest indivisible amount of undo
-# information. The subclasses of this class implement different kinds of atoms,
-# as well as the way to undo and redo them.
-
-    sub new {
-    # This new will be used by subclasses
-    # arg0 is the class. arg1 is a hashref containing various fields. Just
-    # store 'em.
-        my $class = shift;
-	my $atom = shift || {};
-
-	# turn it into an undo move
-	bless $atom, $class;
-    } # end sub Games::Cards::Undo::Atom::new
-
-    sub store {
-    # Store this Atom in the Undo List
-        Games::Cards::Undo->store(shift);
-    } # end sub Games::Cards::Undo::Atom::store
-
-} # end package Games::Cards::Undo::Atom
-
-{
-package Games::Cards::Undo::End_Move;
-# An Undo::End_Move is just a marker. Everything in the Undo_List from just
-# after the last End_Move until this one is one "move". 
-
-    @Games::Cards::Undo::End_Move::ISA = qw(Games::Cards::Undo::Atom);
-
-    # inherit SUPER::new
-    # No other methods necessary!
-
-} # end package Games::Cards::Undo::End_Move
-
-{
-package Games::Cards::Undo::Face;
-
-    @Games::Cards::Undo::Face::ISA = qw(Games::Cards::Undo::Atom);
-
-    # inherit SUPER::new
-
-    sub undo {
-        my $face = shift;
-	my ($card, $direction) = ($face->{"card"}, $face->{"direction"});
-	if ($direction eq "up") {
-	    $card->face_down;
-	} elsif ($direction eq "down") {
-	    $card->face_up;
-	} else {
-	    my $func = (caller(0))[3];
-	    die ("$func called with unknown direction $direction\n");
-	}
-    } # end sub Games::Cards::Undo::Face::undo
-
-    sub redo {
-        my $face = shift;
-	my ($card, $direction) = ($face->{"card"}, $face->{"direction"});
-	if ($direction eq "up") {
-	    $card->face_up;
-	} elsif ($direction eq "down") {
-	    $card->face_down;
-	} else {
-	    my $func = (caller(0))[3];
-	    die ("$func called with unknown direction $direction\n");
-	}
-    } # end sub Games::Cards::Undo::Face::redo
-
-} # end package Games::Cards::Undo::Face
-
-{
-package Games::Cards::Undo::Splice;
-
-    @Games::Cards::Undo::Splice::ISA = qw(Games::Cards::Undo::Atom);
-
-    # inherit SUPER::new
-
-    sub undo {
-    # If we changed ARRAY by doing:
-    # RESULT = splice(ARRAY, OFFSET, LENGTH, LIST);
-    # then we can return ARRAY to its original form by
-    # splice(ARRAY, OFFSET, scalar(LIST), RESULT);
-    #
-    # (sub splice also made sure that for calls to splice without 
-    # all the arguments, the missing arguments were added, and that OFFSET
-    # would be >= 0)
-
-	my $splice = shift;
-	# Could do this quicket with no strict refs :)
-	my ($set, $offset, $in_cards, $out_cards) = 
-	    map {$splice->{$_}} qw(set offset in_cards out_cards);
-
-	# Do the anti-splice and return its return value
-	# (Return will actually be in_cards!)
-	$set->splice ($offset, scalar(@$in_cards), $out_cards);
-    } # end sub Cards::Games::Undo::Splice::undo
-
-    sub redo {
-    # we changed ARRAY by doing:
-    # RESULT = splice(ARRAY, OFFSET, LENGTH, LIST);
-    # Just redo the splice.
-    # (sub splice also made sure that for calls to splice without 
-    # all the arguments, the missing arguments were added, and that OFFSET
-    # would be >= 0)
-
-	my $splice = shift;
-	# Could do this quicket with no strict refs :)
-	my ($set, $offset, $in_cards, $length) = 
-	    map {$splice->{$_}} qw(set offset in_cards length);
-
-	# Do the splice and return its return value
-	# (Return will actually be out_cards!)
-	$set->splice ($offset, $length, $in_cards);
-    } # end sub Cards::Games::Undo::Splice::redo
-
-} # end package Games::Cards::Undo::Splice
-
-} # end package Games::Cards::Undo
 
 1; # end package Games::Cards
 
@@ -1286,8 +1208,40 @@ __END__
 
 An implementation of Klondike (aka standard solitaire) demonstrates how to use
 this module in a simple game. Other card game examples are included as well.
+The Games::Cards README should list them all.
 
 =head1 NOTES
+
+=head2 How to write your own game
+
+So you want to write a card game using Games::Cards (or even 
+Games::Cards::Tk)? Great! That's what the module is for.
+Here are some tips about how to write a game.
+
+=over 4
+
+=item Steal code
+
+Laziness applies in Games::Cards just like in the rest of Perl. It will
+be much easier if you start with an existing game.
+
+=item Stack vs. Queue
+
+Think carefully about whether the Piles in your game are Stacks (LIFO)
+or Queues (FIFO). As a general rule, piles of cards that are usually face 
+down will be Stacks; face up will be Queues. CardSets where you want to 
+access specific cards (i.e., not just the first or last) will be Hands.
+
+=item GUI games
+
+I've tried to design Games::Cards::Tk and the games that use it so that
+the Tk game is very similar to the text game. This allows the most code
+reuse. GUI games may involve clicking, dragging, and a different way to
+display the game; but the underlying game is still the same. Also note
+that serious timewasters may prefer to use the keyboard to play GUI
+games. See L<Games::Cards::Tk> for more details.
+
+=back
 
 =head2 Public and Private
 
@@ -1301,59 +1255,44 @@ public classes inherit. In that case, the privateness is mentioned.
 
 =head2 TODO
 
-=over 4
-
-=item *
-
-Networking games, so that multiple players on different computers can play 
-games (using sockets). This is currently under active development. (gin.pl has
-already been written, and it should require very little changing, other than
-'use Games::Cards::Server' and a bit more I/O.
-
-=item *
-
-ExtraCards. In addition to Suits * Cards_In_Suit, have this field of cards
-added to the deck. E.g., jokers. (Or a "color card" for a dealer's card shoe.)
-These probably need values too.
-
-=item *
-
-Allow user to change more things. E.g. create an AUTOLOAD which returns
-that field, or changes it if there's an argument (cf. Cookbook).
-
-=back
-
-=head2 Maybe TODO
-
-=over 4
-
-=item *
-
-CGI support should be easy to add, so people could play multiplayer games in
-their web browsers. That is further in the future than socket-based
-Client/Server games, however.
-
-=item *
-
-Clone/deep copy method for a CardSet. This would allow e.g. saving a deck
-to restart the same game of solitaire.
-
-=back
+See the TODO file in the distribution
 
 =head2 Not TODO
 
-Computer AI and GUI display are left as exercises for the reader.
+Computer AI and GUI display were left as exercises for the reader. Then
+Michael Houghton wrote a Tk card game, so I guess the readers are doing their
+exercises.
 
 =head1 BUGS
 
-You betcha. It's still alpha.
+You betcha. It's still alpha. 
 
-=head1 AUTHOR
+test.pl doesn't work with MacPerl, because it uses backticks. However,
+(as far as I know) the games released with Games::Cards do work.
 
-Amir Karger, karger@post.harvard.edu
+=head1 AUTHORS
+
+Amir Karger
+
+Andy Bach wrote a Free Cell port, and gets points for the first submitted
+game, plus some neat ideas like CardSet::clone.
+
+Michael Houghton herveus@Radix.Net wrote the initial Tk Free Cell (two
+days after Andy submitted his Free Cell!)  I changed almost all of the code
+eventually, to fit in with Games::Cards::Tk, but he gave me the initial push
+(and code to steal).
+
+=head1 COPYRIGHT
+
+Copyright (c) 1999-2000 Amir Karger
+
+=head1 LICENSE
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-perl(1).
+perl(1), Tk(1)
 
 =cut

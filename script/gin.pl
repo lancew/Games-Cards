@@ -53,6 +53,8 @@ my $Usage =<<"ENDUSAGE";
     h       	prints this help message
 ENDUSAGE
 
+# This otherwise uselessline will unconfuse vim's syntax highlighting!
+
 # Create the game.
 # Use the default deck (standard suits, cards, & card values)
 $Gin = new Games::Cards::Game;
@@ -61,26 +63,26 @@ $Gin = new Games::Cards::Game;
 print "Creating new deck.\n";
 
 NEWGAME: # We go to here when starting a new game
-$Deck = $Gin->create_deck("Deck");
+$Deck = new Games::Cards::Deck ($Gin, "Deck");
 print "Shuffling the deck.\n";
 $Deck->shuffle;
 
 # Deal out the Hands
 @Hands = ();
 foreach my $i (1 .. $Number_Of_Players) {
-    my $hand = new Games::Cards::Hand "Player $i" ;
+    my $hand = new Games::Cards::Hand ($Gin, "Player $i") ;
     $Deck->give_cards($hand, $Cards_Per_Hand);
     $hand->sort_by_value;
     push @Hands, $hand;
 }
 
 # Put one face-up card in the discard pile
-$Discard = new Games::Cards::Stack "Discard pile";
+$Discard = new Games::Cards::Stack ($Gin, "Discard pile");
 $Deck->give_cards($Discard, 1);
 $Discard->top_card->face_up;
 
 # No undo in gin
-# Games::Cards::Undo->initialize();
+# my $Undo = new Games::Cards::Undo();
 
 ######################################################################
 # Now play
