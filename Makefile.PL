@@ -3,7 +3,7 @@ use ExtUtils::MakeMaker;
 # the contents of the Makefile that is written.
 WriteMakefile(
     'NAME'	=> 'Games::Cards',
-    'VERSION_FROM' => 'Games/Cards.pm', # finds $VERSION
+    #'VERSION_FROM' => 'Games/Cards.pm', # finds $VERSION
+    'VERSION_FROM' => 'Cards.pm', # finds $VERSION
     'dist' => { COMPRESS => 'gzip', SUFFIX => 'gz'},
-    'MAN3PODS' => {'Games/Cards.pm' => '$(INST_MAN3DIR)/Games::Cards.3'}
 );

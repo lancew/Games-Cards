@@ -1,5 +1,10 @@
 Significant changes for Perl extension Games::Cards.
 
+1.34 1999/10/28
+	- Fix Makefile.PL, etc.: make install wasn't installing Games::Cards!
+	- Make Undo stuff a bit more OO, allow calling undo during a turn
+	- Fix a couple bugs in undoing turning a card up/down
+
 1.33 1999/08/25
 	- Major overhaul of Undo and methods to add/remove/move cards
 	- Hand class (for a player's hand)

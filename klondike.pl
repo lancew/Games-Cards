@@ -55,6 +55,7 @@ my $Usage =<<"ENDUSAGE";
     w2 moves a card from the waste pile to column 2
     ws moves the whole waste pile back into the stock
     sw (or just s) moves from the stockpile to the waste pile
+    finish attempts to finish the game. The stock & wastepile must be empty.
 
     u  undo last move (multiple undo/redo works)
     r  redo the last move you undid
@@ -97,8 +98,8 @@ $Stock = new Games::Cards::Queue("Stock");
 $Deck->give_cards($Stock, "all");
 $Waste = new Games::Cards::Stack("Waste");
 
-# Initialize the Undo engine with infinite size
-Games::Cards::Undo->initialize();
+# Initialize the Undo engine with infinite size (no size arg. given to new)
+my $Undo = new Games::Cards::Undo;
 
 ######################################################################
 # Now play
@@ -128,12 +129,12 @@ LOOP: while (++$turns) {
 	# more cards from a column to another column
         if (/^([w\d])(\d)$/i) {
 	    &move_to_column($1, $2);
-	    Games::Cards::Undo->end_move;
+	    $Undo->end_move;
 
 	# Move a card to (correct) foundation from waste or from a column
         } elsif (/^([w\d])f$/i) {
 	    &move_to_foundation($1);
-	    Games::Cards::Undo->end_move;
+	    $Undo->end_move;
 
 	# waste to stock
 	} elsif (/^ws$/i) {
@@ -142,7 +143,7 @@ LOOP: while (++$turns) {
 		next;
 	    }
 	    $Waste->give_cards($Stock, "all");
-	    Games::Cards::Undo->end_move;
+	    $Undo->end_move;
 
 	# stock to waste
 	# Take three cards
@@ -155,14 +156,23 @@ LOOP: while (++$turns) {
 	                  $size : 
 			  $Cards_From_Stock;
 	    $Stock->give_cards($Waste, $number);
-	    Games::Cards::Undo->end_move;
+	    $Undo->end_move;
 
 	# finish the game?
 	} elsif (/^finish/i) {
-	    #if ($Stock->size || $Waste->size) {
-	#        $Error = "ERROR! Stock and waste must be empty to finish";
-	#	next;
-	#    }
+	    if ($Stock->size || $Waste->size) {
+	        $Error = "ERROR! Stock and waste must be empty to finish";
+		$turns--;
+		next;
+	    }
+	    foreach my $col (@Tableau) {
+	        if (grep {$_->is_face_down} $col->cards) {
+		    $Error = "ERROR! All cards must be face up to finish";
+		    $turns--;
+		    next LOOP;
+		}
+	    }
+
 	    my $save_turns = $turns;
 	    my $did_move = 0;
 	    do {
@@ -175,21 +185,21 @@ LOOP: while (++$turns) {
 	    } while $did_move == 1;
 
 	    # If we got here, we didn't win
-	    Games::Cards::Undo->end_move;
-	    Games::Cards::Undo->undo; # undo any progress we made
+	    $Undo->end_move;
+	    $Undo->undo; # undo any progress we made
 	    $Error = "ERROR! Unable to finish!\n";
 	    $turns = $save_turns;
 
 	# undo
 	} elsif (/^u/i) {
-	    Games::Cards::Undo->undo or
+	    $Undo->undo or
 	        $Error = "ERROR! Can't undo any more", next;
 	    # subtract the "undo" turn *and* the previous move
 	    $turns-=2;
 
 	# redo
 	} elsif (/^r/i) {
-	    Games::Cards::Undo->redo or
+	    $Undo->redo or
 	        $Error = "ERROR! Can't redo any more", next;
 	    # $turns=$turns; subtract the "redo" turn but add a move.
 

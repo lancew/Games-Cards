@@ -9,11 +9,7 @@
 
 # TODO get rid of size, have cards return wantarray ? array of cards : size
 #
-# TODO Why not call GC::Undo::store straight from GC::Undo::Atom::new? After
-# all, why would we create an Undo::Atom if we didn't want to store it?
-# Then we could have an $Undo object in the main program so we can use
-# $Undo->undo instead of GC::Undo->undo. (sub new can be initialize!)
-# Also, create Undo::Sort?
+# TODO write Undo::Sort?
 
 package Games::Cards;
 
@@ -22,7 +18,7 @@ use vars qw($VERSION);
 require 5.004; # I use 'foreach my'
 
 # Stolen from `man perlmod`
-$VERSION = do { my @r = (q$Revision: 1.33 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
+$VERSION = do { my @r = (q$Revision: 1.34 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
 
 # sub-packages
 { 
@@ -570,13 +566,14 @@ package Games::Cards::CardSet;
 	                         $length, @$in_cards)];
 
 	# Store the splice & its result for Undo
-	Games::Cards::Undo->store(new Games::Cards::Undo::Splice {
-				    "set" => $set,
-				    "offset" => $offset,
-				    "length" => $length,
-				    "in_cards" => $in_cards,
-				    "out_cards" => $out_cards,
-				    });
+	my $atom = new Games::Cards::Undo::Splice {
+			"set" => $set,
+			"offset" => $offset,
+			"length" => $length,
+			"in_cards" => $in_cards,
+			"out_cards" => $out_cards,
+			};
+	$atom->store; # store the atom in the Undo List
 
 	# print $set->size,"\n";
 	return $out_cards;
@@ -898,10 +895,11 @@ Makes a card face up
         my $card = shift;
 	unless ($card->{"face_up"}) {
 	    $card->{"face_up"} = 1;
-	    Games::Cards::Undo->store(new Games::Cards::Undo::Face {
-					"card" => $card,
-					"direction" => "up",
-					});
+	    my $atom = new Games::Cards::Undo::Face {
+			    "card" => $card,
+			    "direction" => "up",
+			    };
+	    $atom->store; # store the atom in the Undo List
 	}
     } # end sub Games::Cards::Card::face_up
 
@@ -915,10 +913,11 @@ Makes a card face down
         my $card = shift;
 	if ($card->{"face_up"}) {
 	    $card->{"face_up"} = 0;
-	    Games::Cards::Undo->store(new Games::Cards::Undo::Face {
-					"card" => $card,
-					"direction" => "up",
-					});
+	    my $atom = new Games::Cards::Undo::Face {
+			    "card" => $card,
+			    "direction" => "down",
+			    };
+	    $atom->store; # store the atom in the Undo List
 	}
     } # end sub Games::Cards::Card::face_down
 
@@ -957,14 +956,17 @@ package Games::Cards::Undo;
 # which is just a placeholder saying that move is over.
 
 # Global private variables
-# CG::Undo::Undo_List holds all previous moves in CG::Undo::Atom objects
-# CG::Undo::Current_Atom is the index of the current Atom in @Undo_List
-# CG::Undo::Max_Size is the maximum size (moves, not Atoms!) of the undo list
-# CG::Undo::In_Undo says that we're currently doing (or undoing) an Undo, so we
+# Can't keep this info in an object, because private GC subroutines
+# (like CardSet::splice) need access to the Undo list, and I shouldn't have
+# to pass the undo object around to every sub.
+# GC::Undo::Undo_List holds all previous moves in GC::Undo::Atom objects
+# GC::Undo::Current_Atom is the index of the current Atom in @Undo_List
+# GC::Undo::Max_Size is the maximum size (moves, not Atoms!) of the undo list
+# GC::Undo::In_Undo says that we're currently doing (or undoing) an Undo, so we
 # shouldn't store undo information when we move cards around
 my (@Undo_List, $Current_Atom, $Max_Size, $In_Undo);
 
-=item initialize(MOVES)
+=item new(MOVES)
 
 Initialize the Undo engine. MOVES is the number of atoms to save.
 0 (or no argument) allows infinite undo.
@@ -975,12 +977,18 @@ engine for a new game.
 
 =cut
 
-    sub initialize {
+    sub new {
 	my $class = shift;
+	# (re)set global private variables
 	$Max_Size = shift || 0;
         $Current_Atom = -1;
 	@Undo_List = ();
 	$In_Undo = 0;
+
+	# Make the (dummy) object to give a "handle" for methods
+	my $thing = {};
+	bless $thing, $class;
+	return $thing;
     }
 
 =item end_move
@@ -992,7 +1000,8 @@ is considered one move. This tells undo how much to undo.
 
     sub end_move {
 	# calling with just "store(foo)" there aren't enough args!
-        Games::Cards::Undo->store (new Games::Cards::Undo::End_Move);
+	my $atom = new Games::Cards::Undo::End_Move;
+	$atom->store;
     } # end sub Games::Cards::Undo::end_move
 
     sub store {
@@ -1004,11 +1013,10 @@ is considered one move. This tells undo how much to undo.
 	# Don't store moves if the undo engine hasn't been initialized
 	return unless defined $Current_Atom;
 
-	# don't store undo moves when we're currently implementing an (un_)undo
+	# don't store undo moves when we're currently implementing an undo/redo
 	return if $In_Undo; 
 
         shift; # ignore class
-
 	my $atom = shift; # the Undo::Atom to store
 
 	# If we undid some moves & then do a new move instead of redoing,
@@ -1020,9 +1028,9 @@ is considered one move. This tells undo how much to undo.
 
 	# If the list is too big, remove a whole move (not just an Atom)
 	# from the beginning of the list (oldest undos)
-	my $classname = "Games::Cards::Undo::End_Move";
-	if ($Max_Size && grep {ref eq $classname} @Undo_List > $Max_Size) {
-	    $atom = shift @Undo_List until ref($atom) eq $classname;
+	my $end_class = "Games::Cards::Undo::End_Move";
+	if ($Max_Size && grep {ref eq $end_class} @Undo_List > $Max_Size) {
+	    $atom = shift @Undo_List until ref($atom) eq $end_class;
 	}
 
 	$Current_Atom = $#Undo_List;
@@ -1039,22 +1047,24 @@ Undo a move.
     sub undo {
     # undoing a move means undoing all the Atoms since the last
     # End_Move Atom
-    # TODO should be able to call undo from the middle of a turn
-    # so don't assume you can --$Current_Atom...
+    # Note that this sub can (?) also undo from the middle of a move
+	# If called w/ class instead of object, and we never called new(),
+	# then return. This shouldn't happen.
+	return unless defined $Current_Atom; # never called new
 	return if $Current_Atom == -1;
 	$In_Undo = 1; # Don't store info when moving cards around
 
 	# Loop until the next End_Move Atom or until we exhaust the undo list
-	my $atom;
-	my $classname = "Games::Cards::Undo::End_Move";
-	for ($atom = $Undo_List[--$Current_Atom];
-	     ref($atom) ne $classname && $Current_Atom!=-1;
-	     $atom = $Undo_List[--$Current_Atom]) {
+	my $end_class= "Games::Cards::Undo::End_Move";
+	$Current_Atom-- if ref($Undo_List[$Current_Atom]) eq $end_class;
+	for (;$Current_Atom > -1; $Current_Atom--) {
+	   my $atom = $Undo_List[$Current_Atom];
+	   last if ref($atom) eq $end_class;
 	   $atom->undo;
 	}
 	# now $Current_Atom is on the End_Move at the end of the last move
 
-	$In_Undo = 0;
+	$In_Undo = 0; # done undoing. Allowed to store again.
 	return 1;
     } # end sub Games::Cards::Undo::undo
 
@@ -1066,20 +1076,26 @@ Redo a move that had been undone with undo.
 =cut
 
     sub redo {
+    # redoing a move means redoing every Atom from the current atom
+    # (which should be an End_Move) until the next End_Move atom
+	# If called w/ class instead of object, and we never called new(),
+	# then return. This shouldn't happen.
+	return unless defined $Current_Atom; 
 	return if $Current_Atom == $#Undo_List;
 	$In_Undo = 1; # Don't store info when moving cards around
 
 	# Loop until the next End_Move Atom or until we exhaust the undo list
 	my $atom;
-	my $classname = "Games::Cards::Undo::End_Move";
-	for ($atom = $Undo_List[++$Current_Atom];
-	     ref($atom) ne $classname;
-	     $atom = $Undo_List[++$Current_Atom]) {
-	    $atom->redo;
+	my $end_class = "Games::Cards::Undo::End_Move";
+	$Current_Atom++ if ref($Undo_List[$Current_Atom]) eq $end_class;
+	for (;$Current_Atom <= $#Undo_List; $Current_Atom++) {
+	   my $atom = $Undo_List[$Current_Atom];
+	   last if ref($atom) eq $end_class;
+	   $atom->redo;
 	}
 	# now $Current_Atom is on the End_Move at the end of this move
 
-	$In_Undo = 0;
+	$In_Undo = 0; # done redoing. Allowed to store again.
 	return 1;
     } # end sub Games::Cards::Undo::redo
 
@@ -1102,7 +1118,12 @@ package Games::Cards::Undo::Atom;
 
 	# turn it into an undo move
 	bless $atom, $class;
-    } # end sub CG::Undo::Atom::new
+    } # end sub Games::Cards::Undo::Atom::new
+
+    sub store {
+    # Store this Atom in the Undo List
+        Games::Cards::Undo->store(shift);
+    } # end sub Games::Cards::Undo::Atom::store
 
 } # end package Games::Cards::Undo::Atom
 
@@ -1130,8 +1151,8 @@ package Games::Cards::Undo::Face;
 	my ($card, $direction) = ($face->{"card"}, $face->{"direction"});
 	if ($direction eq "up") {
 	    $card->face_down;
-	} elsif ($direction eq "up") {
-	    $card->face_down;
+	} elsif ($direction eq "down") {
+	    $card->face_up;
 	} else {
 	    my $func = (caller(0))[3];
 	    die ("$func called with unknown direction $direction\n");
@@ -1143,7 +1164,7 @@ package Games::Cards::Undo::Face;
 	my ($card, $direction) = ($face->{"card"}, $face->{"direction"});
 	if ($direction eq "up") {
 	    $card->face_up;
-	} elsif ($direction eq "up") {
+	} elsif ($direction eq "down") {
 	    $card->face_down;
 	} else {
 	    my $func = (caller(0))[3];
