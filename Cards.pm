@@ -18,7 +18,7 @@ use vars qw($VERSION);
 require 5.004; # I use 'foreach my'
 
 # Stolen from `man perlmod`
-$VERSION = do { my @r = (q$Revision: 1.34 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
+$VERSION = do { my @r = (q$Revision: 1.36 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
 
 # sub-packages
 { 
@@ -51,7 +51,7 @@ Games::Cards -- Perl module for playing card games
     my $Rummy = new Games::Cards::Game;
 
     # Create and shuffle the deck and create the discard pile
-    my $Deck = $Rummy->create_deck; # creates correct deck for this game
+    my $Deck = $Rummy->create_deck("Deck"); # creates correct deck for this game
     $Deck->shuffle;
     my $Discard = new Games::Cards::Queue "Discard Pile";
 
@@ -69,10 +69,10 @@ Games::Cards -- Perl module for playing card games
     $Hands[1]->give_a_card ($Discard, "8D"); # discard 8 of diamonds
     
     # Undo stuff (e.g. for solitaire, not rummy)
-    Games::Cards::Undo->initialize(100); # Make undo engine to save 100 moves
-    Games::Cards::Undo->undo; # undo last move
-    Games::Cards::Undo->redo; # redo last undone move
-    Games::Cards::Undo->end_move; # tell undo engine we're done with a move
+    $Undo = new Games::Cards::Undo(100); # Make undo engine to save 100 moves
+    $Undo->undo; # undo last move
+    $Undo->redo; # redo last undone move
+    $Undo->end_move; # tell undo engine we're done with a move
 
 =head1 DESCRIPTION
 
@@ -140,17 +140,21 @@ For example, war would require "Ace"=>14.
 	bless $cardgame, $class;
     } # end sub Games::Cards::Game::new
 
-=item create_deck
+=item create_deck(NAME)
 
 creates an I<unshuffled> deck of cards. For each card in the deck it creates
-a name, suit, value, and suit value. The makeup of the deck was stipulated by
-the 'new Games::Cards' command. Returns the deck.
+a name, suit, value, and suit value. NAME is the name to give the deck, e.g.
+"Deck" (it is passed to the "new" call that creates the deck.) The number of
+cards in the deck, etc.  is stipulated by the argument, which is a
+Games::Cards::Game object.  Returns the deck, which is a Games::Cards::Queue
+object.
 
 =cut
 
     sub create_deck {
 	my $game = shift;
-	my $deck = new Games::Cards::Queue "Deck";
+	my $deckname = shift;
+	my $deck = new Games::Cards::Queue $deckname;
 	my %cards = %{$game->{"cards_in_suit"}};
 
 	# make an unshuffled deck
@@ -328,6 +332,7 @@ transfer any cards.
 
         return 1;
     } # end sub Games::Cards::Pile::give_cards
+
 
 =item top_card
 
@@ -515,12 +520,21 @@ of a number of other classes, and those subclasses should be used instead.
 {
 package Games::Cards::CardSet;
 # Fields:
-# cards - array of Cards name - "Joe's Hand" for Joe's hand, "discard" for a
+# cards - array of Cards 
+# name - "Joe's Hand" for Joe's hand, "discard" for a
 # discard pile, etc.
 
+=item new(NAME)
+
+create a new (empty) CardSet. NAME is a string that e.g. can be output when
+you print the CardSet.
+
+=cut
+
     sub new {
-    # arg0 is the class
-        my $class = shift;
+        my $self = shift;
+	# so we can say $foo->new or new Bar
+        my $class = ref($self) || $self;
 	my $name = shift;
 	my $set = {
 	    "cards" => [],
@@ -634,6 +648,23 @@ Sorts the Set by suit, then by value within the suit.
 	                           $a->value <=> $b->value} 
 				@{$set->{"cards"}}
     } # end sub Games::Cards::CardSet::sort_by_suit_and_value
+
+=item clone
+
+Create a copy of this CardSet. That is, create an object with the same class
+as arg0. Then make a copy of each Card in the CardSet (true copy, not a
+reference). arg1 is the name to give the new CardSet.
+
+=cut
+
+    sub clone {
+	my ($this, $name) = shift;
+	my $clone = $this->new($name);
+
+	$clone->{"cards"} = [map {$_->clone} @{$this->cards}];
+
+	return $clone;
+    } # end sub Games::Cards::CardSet::clone
 
 =item face_down
 
@@ -769,6 +800,28 @@ creates a new card. HASHREF references a hash with keys "suit" and "name".
 	# turn it into a playing card
 	bless $card, $class;
     } # end sub Games::Cards::Card::new
+
+=item clone
+
+makes a copy of the Card (not just a reference to it).
+
+=cut
+
+    sub clone {
+        my $old_card = shift;
+	my $suit = $old_card->suit("long");
+	my $name = $old_card->name("long");
+	my $value = $old_card->value;
+	my $suit_value = $old_card->suit_value;
+	my $new_card = new Games::Cards::Card {
+	    "suit"=>$suit, "name"=> $name,
+	    "suit_value" => $suit_value, "value" => $value
+	};
+
+	$old_card->is_face_up ? $new_card->face_up : $new_card->face_down;
+	
+	return $new_card;
+    } # end sub Games::Cards::Card::clone
 
 =item print(LENGTH)
 

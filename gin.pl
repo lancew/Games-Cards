@@ -61,7 +61,7 @@ $Gin = new Games::Cards::Game;
 print "Creating new deck.\n";
 
 NEWGAME: # We go to here when starting a new game
-$Deck = $Gin->create_deck;
+$Deck = $Gin->create_deck("Deck");
 print "Shuffling the deck.\n";
 $Deck->shuffle;
 

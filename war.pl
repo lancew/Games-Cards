@@ -53,7 +53,7 @@ $War = new Games::Cards::Game {"cards_in_suit" => $valueref};
 
 # Create and shuffle the deck
 print "Creating new deck.\n";
-$Deck = $War->create_deck;
+$Deck = $War->create_deck("Deck");
 print "Shuffling the deck.\n";
 $Deck->shuffle;
 

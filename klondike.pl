@@ -7,10 +7,6 @@
 # This program is free software; you can redistribute it and/or modify it
 # under the same terms as Perl itself.
 #
-# TODO restart same game, start new game.
-# TODO finish game command. loop through and columns
-# and play top card to the foundation. End loop if it doesn't work,
-# or win! (Only do it if no cards in waste pile, no face down cards.)
 
 use strict;
 use Games::Cards;
@@ -21,6 +17,7 @@ srand();
 # SETUP THE GAME
 # Main variables
 my $Klondike; # the game object
+my $Save_Deck; # $Deck is copied from this; used for restart
 my $Deck; # the deck we're using in the game
 my %Foundations; # the four piles we're trying to fill
 my @Tableau; # the table, where most of the play happens
@@ -59,6 +56,7 @@ my $Usage =<<"ENDUSAGE";
 
     u  undo last move (multiple undo/redo works)
     r  redo the last move you undid
+    restart   start the game over with the same deck
 
     q  quits a game, allowing you to start a new round or stop playing entirely
     h  prints this help
@@ -72,9 +70,12 @@ $Klondike = new Games::Cards::Game;
 print "Creating new deck.\n";
 
 NEWGAME: # We go to here when starting a new game
-$Deck = $Klondike->create_deck;
+$Save_Deck = $Klondike->create_deck("Save Deck");
 print "Shuffling the deck.\n";
-$Deck->shuffle;
+$Save_Deck->shuffle;
+
+RESTART: # We go here when we restart a game
+$Deck = $Save_Deck->clone("Deck");
 
 # Deal out the Tableau
 @Tableau = ();
@@ -190,6 +191,11 @@ LOOP: while (++$turns) {
 	    $Error = "ERROR! Unable to finish!\n";
 	    $turns = $save_turns;
 
+	# restart
+	} elsif (/^restart/i) {
+	    $Undo->end_move; # doesn't really matter: $Undo will be clobbered
+	    goto RESTART;
+
 	# undo
 	} elsif (/^u/i) {
 	    $Undo->undo or
@@ -214,10 +220,10 @@ LOOP: while (++$turns) {
 	} elsif (/^q/i) {
 	    print "Are you sure you want to quit? (y/n): ";
 	    my $a = <STDIN>;
-	    if ($a =~ /^y/i) {
+	    if ($a =~ /^\s*y/i) {
 		print "Would you like to play another game? (y/n): ";
 		$a = <STDIN>;
-		if ($a =~ /^n/i) {
+		if ($a =~ /^\s*n/i) {
 		    print "Bye!\n";
 		    last LOOP;
 		} else {
@@ -358,7 +364,7 @@ sub check_win {
 	print "You have won after $turns turns!\n";
 	print "\n\nWould you like to play another game? (y/n): ";
 	$a = <STDIN>;
-	goto NEWGAME if ($a =~ /^y/i);
+	goto NEWGAME if ($a =~ /\s*^y/i);
 	exit;
     }
 }

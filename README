@@ -27,6 +27,9 @@ gin.pl - Plays gin. Unfortunately, Games::Cards doesn't yet work over a network
 	game. However, support for Server/Client games is under active
 	development.
 
+(Not one but two implementations of Freecell have been written, one with GUI!
+I plan to include them in future releases.)
+
 --------------------------------------------------
 Version info:
 
