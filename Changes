@@ -1,0 +1,15 @@
+Revision history for Perl extension Games::Cards.
+
+ 1.20	1999/08/12
+ 	- alpha release version (announced on cpl.modules)
+
+ 1.16	1999/08/09
+ 	- plays klondike
+	- undo
+
+ 1.5	1999/08/01
+	- plays war
+
+ 1.1	1999/08/01 18:35:18
+	- original version
+

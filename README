@@ -1,0 +1,24 @@
+		    README for Games::Cards package
+		    -------------------------------
+
+Games::Cards is a Perl module used to write card games. It's basically
+a bunch of object-oriented methods to create sets of cards and move cards
+between those sets---which, if you think about it, is all that a card game is.
+
+See the embedded pod documentation to see what it can do.
+
+And that's not all! The module comes with some (free!) games that have been
+written using Games::Cards.
+
+WARNING! This code is still alpha, and the whole package may change radically
+before it becomes beta.
+
+Installation
+------------
+
+This module uses MakeMaker, so to install it, just do:
+
+    perl Makefile.PL
+    make
+    make install
+
