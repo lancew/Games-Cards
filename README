@@ -1,17 +1,43 @@
-		    README for Games::Cards package
-		    -------------------------------
+		    README for Games::Cards module
+		    ------------------------------
 
 Games::Cards is a Perl module used to write card games. It's basically
 a bunch of object-oriented methods to create sets of cards and move cards
-between those sets---which, if you think about it, is all that a card game is.
+within and between those sets---which, if you think about it, is all that a
+card game is.
 
-See the embedded pod documentation to see what it can do.
+See the embedded pod documentation (e.g., "perldoc Games::Cards"). The docs
+describe only the public subroutines and classes (plus a couple private classes
+whose subroutines are inherited by public derived classes). There is some more
+documentation (on private stuff) as regular comments in the module.
 
 And that's not all! The module comes with some (free!) games that have been
-written using Games::Cards.
+written using Games::Cards. These include:
 
-WARNING! This code is still alpha, and the whole package may change radically
-before it becomes beta.
+klondike.pl - Otherwise known as regular old Solitaire. Currently the most
+        useful of these games.
+
+war.pl - This game plays both sides in a game of War, saving time and effort
+	for weary users. And in case you saw the movie Wargames, don't worry:
+	Even though the module may be buggy, it probably won't lead to a
+	global thermonuclear war.
+
+gin.pl - Plays gin. Unfortunately, Games::Cards doesn't yet work over a network
+        so both players play on the same screen, which kind of ruins the
+	game. However, support for Server/Client games is under active
+	development.
+
+--------------------------------------------------
+Version info:
+
+WARNING! THIS CODE IS STILL ALPHA
+The whole package may change radically before it becomes beta.
+
+I'm developing the module with RCS, and the version number is derived
+from that. Right now I'm using v1.*, and the version numbers are changing
+quickly. When things settle down, I'll move to v2.* and use subversions
+so that the version numbers change more slowly.
+--------------------------------------------------
 
 Installation
 ------------

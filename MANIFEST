@@ -1,8 +1,9 @@
 Games/Cards.pm
-Changes
+Changes			Major changes between releases
 MANIFEST
 Makefile.PL
 README
-klondike.pl
+gin.pl			Play gin (not really working in 1.33: no networking)
+klondike.pl		Play solitaire
 test.pl
-war.pl
+war.pl			Computer plays war against itself and tells you who won

@@ -1,7 +1,13 @@
-Revision history for Perl extension Games::Cards.
+Significant changes for Perl extension Games::Cards.
+
+1.33 1999/08/25
+	- Major overhaul of Undo and methods to add/remove/move cards
+	- Hand class (for a player's hand)
+	- Sorting by suit, value, or both
+	- plays gin -- but only on one console :(
 
  1.20	1999/08/12
- 	- alpha release version (announced on cpl.modules)
+ 	- alpha release version (announced on cpl.modules, added to CPAN)
 
  1.16	1999/08/09
  	- plays klondike

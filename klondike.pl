@@ -128,10 +128,12 @@ LOOP: while (++$turns) {
 	# more cards from a column to another column
         if (/^([w\d])(\d)$/i) {
 	    &move_to_column($1, $2);
+	    Games::Cards::Undo->end_move;
 
 	# Move a card to (correct) foundation from waste or from a column
         } elsif (/^([w\d])f$/i) {
 	    &move_to_foundation($1);
+	    Games::Cards::Undo->end_move;
 
 	# waste to stock
 	} elsif (/^ws$/i) {
@@ -140,6 +142,7 @@ LOOP: while (++$turns) {
 		next;
 	    }
 	    $Waste->give_cards($Stock, "all");
+	    Games::Cards::Undo->end_move;
 
 	# stock to waste
 	# Take three cards
@@ -152,6 +155,30 @@ LOOP: while (++$turns) {
 	                  $size : 
 			  $Cards_From_Stock;
 	    $Stock->give_cards($Waste, $number);
+	    Games::Cards::Undo->end_move;
+
+	# finish the game?
+	} elsif (/^finish/i) {
+	    #if ($Stock->size || $Waste->size) {
+	#        $Error = "ERROR! Stock and waste must be empty to finish";
+	#	next;
+	#    }
+	    my $save_turns = $turns;
+	    my $did_move = 0;
+	    do {
+		$did_move = 0;
+	        foreach my $j (1..@Tableau) {
+		    $did_move = 1, $turns++ if &move_to_foundation($j);
+		}
+		&check_win($turns);
+		&print_game; sleep(1);
+	    } while $did_move == 1;
+
+	    # If we got here, we didn't win
+	    Games::Cards::Undo->end_move;
+	    Games::Cards::Undo->undo; # undo any progress we made
+	    $Error = "ERROR! Unable to finish!\n";
+	    $turns = $save_turns;
 
 	# undo
 	} elsif (/^u/i) {
@@ -162,7 +189,7 @@ LOOP: while (++$turns) {
 
 	# redo
 	} elsif (/^r/i) {
-	    Games::Cards::Undo->un_undo or
+	    Games::Cards::Undo->redo or
 	        $Error = "ERROR! Can't redo any more", next;
 	    # $turns=$turns; subtract the "redo" turn but add a move.
 
