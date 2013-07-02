@@ -16,11 +16,11 @@ Games::Cards -- Perl module for writing and playing card games
 
     # shuffle the deck and create the discard pile
     $Deck->shuffle;
-    my $Discard = new Games::Cards::Queue "Discard Pile";
+    my $Discard = new Games::Cards::Queue $Rummy, "Discard Pile";
 
     # Deal out the hands
     foreach my $i (1 .. 3) {
-	my $hand = new Games::Cards::Hand "Player $i" ;
+	my $hand = new Games::Cards::Hand $Rummy, "Player $i" ;
 	$Deck->give_cards($hand, 7);
 	$hand->sort_by_value;
 	push @Hands, $hand;
